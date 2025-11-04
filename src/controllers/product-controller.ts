@@ -35,7 +35,7 @@ export const getProducts = async (req: Request, res: Response) => {
   }
 };
 
-// Create new product and add to products array
+// Create new product and insert to database
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const { name, quantity, price } = req.body;
@@ -86,7 +86,7 @@ export const createProduct = async (req: Request, res: Response) => {
   }
 };
 
-// Update product from products array
+// Update product from database
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const productId = Number(req.params.id);
@@ -151,7 +151,7 @@ export const updateProduct = async (req: Request, res: Response) => {
   }
 };
 
-// Delete product from products array
+// Delete product from database
 export const deleteProduct = async (req: Request, res: Response) => {
   try {
     const productId = Number(req.params.id);
