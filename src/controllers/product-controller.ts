@@ -1,63 +1,198 @@
 import { Request, Response } from "express";
-import { Product, products } from "../models/product-model.js";
+import prismaClient from "../connection/client.js";
 
-// Fetch products data and convert to JSON for reponse
-export const getProducts = (req: Request, res: Response) => {
-  res.status(200).json(products);
+// Get products data from database and convert to JSON for reponse
+export const getProducts = async (req: Request, res: Response) => {
+  try {
+    const products = await prismaClient.product.findMany({
+      orderBy: {
+        id: 'asc'
+      }
+    });
+    const statusCode = 200;
+    const response = {
+      success: true,
+      code: statusCode,
+      message: 'Products retrieved successfully.',
+      dataCount: products.length,
+      data: {
+        products: products
+      }
+    };
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    const statusCode = 500;
+    const response = {
+      success: false,
+      error: {
+        code: statusCode,
+        message: error
+      }
+    };
+
+    res.status(statusCode).json(response);
+  }
 };
 
 // Create new product and add to products array
-export const createProduct = (req: Request, res: Response) => {
-  const { name, quantity, price } = req.body;
-  const newProductId = products.length > 0 ? products[products.length - 1]?.id : 1;
-  const newProduct: Product = {
-    id: (typeof newProductId === 'number' && products.length > 0) ? newProductId + 1 : 1,
-    name: name,
-    quantity: Number(quantity),
-    price: Number(price)
-  };
+export const createProduct = async (req: Request, res: Response) => {
+  try {
+    const { name, quantity, price } = req.body;
 
-  products.push(newProduct);
-  res.status(201).json(newProduct);
+    if (name.length === 0) {
+      throw 'Name is empty';
+    }
+
+    if (Number.isNaN(Number(quantity))) {
+      throw 'Quantity must be numeric';
+    }
+
+    if (Number.isNaN(Number(price))) {
+      throw 'Price must be numeric';
+    }
+
+    const product = await prismaClient.product.create({
+      data: {
+        name: name,
+        quantity: Number(quantity),
+        price: parseFloat(price)
+      }
+    });
+    const productArray = [product];
+    const statusCode = 201;
+    const response = {
+      success: true,
+      code: statusCode,
+      message: 'Products created successfully.',
+      dataCount: productArray.length,
+      data: {
+        products: productArray
+      }
+    };
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    const statusCode = 400;
+    const response = {
+      success: false,
+      error: {
+        code: statusCode,
+        message: error
+      }
+    };
+
+    res.status(statusCode).json(response);
+  }
 };
 
 // Update product from products array
-export const updateProduct = (req: Request, res: Response) => {
-  const { name, quantity, price } = req.body;
-  const productId = Number(req.params.id);
-  const targetUpdateProduct = products.find(product => product.id === productId);
-  let message = 'Update product failed.';
+export const updateProduct = async (req: Request, res: Response) => {
+  try {
+    const productId = Number(req.params.id);
+    const { name, quantity, price } = req.body;
 
-  if (targetUpdateProduct) {
-    targetUpdateProduct.name = name;
-    targetUpdateProduct.quantity = Number(quantity);
-    targetUpdateProduct.price = Number(price);
-    message = `Update product with id: ${productId} successful.`;
+    if (name.length === 0) {
+      throw 'Name is empty';
+    }
+
+    if (Number.isNaN(Number(quantity))) {
+      throw 'Quantity must be numeric';
+    }
+
+    if (Number.isNaN(Number(price))) {
+      throw 'Price must be numeric';
+    }
+
+    const existingProduct = await prismaClient.product.findUnique({
+      where: {
+        id: productId
+      }
+    });
+
+    if (existingProduct === null) {
+      throw `Product with id: ${productId} is not exist`;
+    }
+
+    const updatedProduct = await prismaClient.product.update({
+      where: {
+        id: productId
+      },
+      data: {
+        name: name,
+        quantity: Number(quantity),
+        price: parseFloat(price)
+      }
+    });
+    const productArray = [updatedProduct];
+    const statusCode = 200;
+    const response = {
+      success: true,
+      code: statusCode,
+      message: 'Products updated successfully.',
+      dataCount: productArray.length,
+      data: {
+        products: productArray
+      }
+    };
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    const statusCode = 400;
+    const response = {
+      success: false,
+      error: {
+        code: statusCode,
+        message: error
+      }
+    };
+
+    res.status(statusCode).json(response);
   }
-
-  const response = {
-    message: message,
-    products: products
-  };
-
-  res.status(200).json(response);
 };
 
 // Delete product from products array
-export const deleteProduct = (req: Request, res: Response) => {
-  const productId = Number(req.params.id);
-  const targetDeletionProductIndex = products.findIndex(product => product.id === productId);
-  let message = 'Delete product failed.';
+export const deleteProduct = async (req: Request, res: Response) => {
+  try {
+    const productId = Number(req.params.id);
+    const existingProduct = await prismaClient.product.findUnique({
+      where: {
+        id: productId
+      }
+    });
 
-  if (targetDeletionProductIndex !== -1) {
-    products.splice(targetDeletionProductIndex, 1);
-    message = `Delete product with id: ${productId} successful.`;
+    if (existingProduct === null) {
+      throw `Product with id: ${productId} is not exist`;
+    }
+
+    const deletedProduct = await prismaClient.product.delete({
+      where: { 
+        id: productId
+      }
+    });
+    const productArray = [deletedProduct];
+    const statusCode = 200;
+    const response = {
+      success: true,
+      code: statusCode,
+      message: 'Products deleted successfully.',
+      dataCount: productArray.length,
+      data: {
+        products: productArray
+      }
+    };
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    const statusCode = 400;
+    const response = {
+      success: false,
+      error: {
+        code: statusCode,
+        message: error
+      }
+    };
+
+    res.status(statusCode).json(response);
   }
-
-  const response = {
-    message: message,
-    products: products
-  };
-
-  res.status(200).json(response);
 };

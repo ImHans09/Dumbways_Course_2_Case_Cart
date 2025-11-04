@@ -5,8 +5,8 @@ import orderRoutes from './routes/order-route.js';
 // Create Express app
 const app = express();
 
-// Initialize port
-const port = 3000;
+// Get port from environment
+const port = process.env.PORT;
 
 // Parsing user data from input form
 app.use(express.urlencoded({ extended: false }));
