@@ -40,7 +40,7 @@ export const createProduct = async (req: Request, res: Response) => {
   try {
     const { name, quantity, price } = req.body;
 
-    if (name.length === 0) {
+    if (name.trim().length === 0) {
       throw 'Name is empty';
     }
 
@@ -92,7 +92,7 @@ export const updateProduct = async (req: Request, res: Response) => {
     const productId = Number(req.params.id);
     const { name, quantity, price } = req.body;
 
-    if (name.length === 0) {
+    if (name.trim().length === 0) {
       throw 'Name is empty';
     }
 
