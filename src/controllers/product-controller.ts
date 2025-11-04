@@ -13,8 +13,8 @@ export const createProduct = (req: Request, res: Response) => {
   const newProduct: Product = {
     id: (typeof newProductId === 'number' && products.length > 0) ? newProductId + 1 : 1,
     name: name,
-    quantity: quantity,
-    price: price
+    quantity: Number(quantity),
+    price: Number(price)
   };
 
   products.push(newProduct);
@@ -30,8 +30,8 @@ export const updateProduct = (req: Request, res: Response) => {
 
   if (targetUpdateProduct) {
     targetUpdateProduct.name = name;
-    targetUpdateProduct.quantity = quantity;
-    targetUpdateProduct.price = price;
+    targetUpdateProduct.quantity = Number(quantity);
+    targetUpdateProduct.price = Number(price);
     message = `Update product with id: ${productId} successful.`;
   }
 
