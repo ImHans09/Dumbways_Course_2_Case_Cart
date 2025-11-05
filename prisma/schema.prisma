@@ -13,14 +13,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Define User model for users table in database
+model User {
+  @@map(name: "users")
+
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(300)
+  email       String    @unique @db.VarChar(300)
+  password    String    @db.VarChar(16)
+  createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
+  updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
+  orders      Order[]
+}
+
 // Define Product model for products table in database
 model Product {
   @@map(name: "products")
 
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(300)
-  quantity    Int
+  stock       Int
   price       Float
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
+  orders      Order[]   @relation("products_in_orders")
+}
+
+// Define Order model for orders table in database
+model Order {
+  @@map(name: "orders")
+
+  id          Int       @id @default(autoincrement())
+  userId      Int       @map(name: "user_id")
+  quantity    Int
+  subtotal    Float
+  createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
+  updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
+  products    Product[] @relation("products_in_orders")
+  user        User      @relation(fields: [userId], references: [id])
 }

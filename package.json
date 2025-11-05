@@ -8,6 +8,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "node --loader ts-node/esm src/app.ts"
   },
+  "prisma": {
+    "seed": "node --loader ts-node/esm src/prisma/seed.ts"
+  },
   "author": "Muhammad Rayhan Permana",
   "license": "ISC",
   "dependencies": {
