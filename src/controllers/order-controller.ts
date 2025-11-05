@@ -122,7 +122,7 @@ export const countOrdersWithGrouping = async (req: Request, res: Response) => {
     const orders = await prismaClient.order.groupBy({
       by: ['userId'],
       _count: {
-        userId: true
+        id: true
       },
       orderBy: {
         _count: {
