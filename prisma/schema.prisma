@@ -21,6 +21,7 @@ model User {
   name        String    @db.VarChar(300)
   email       String    @unique @db.VarChar(300)
   password    String    @db.VarChar(16)
+  point       Int       @default(0)
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
   orders      Order[]
@@ -31,12 +32,14 @@ model Product {
   @@map(name: "products")
 
   id          Int       @id @default(autoincrement())
+  supplierId  Int       @map(name: "supplier_id")
   name        String    @db.VarChar(300)
-  stock       Int
-  price       Float
+  price       Float     @default(0)
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
+  stock       Stock?
   orders      Order[]   @relation("products_in_orders")
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
 }
 
 // Define Order model for orders table in database
@@ -45,10 +48,30 @@ model Order {
 
   id          Int       @id @default(autoincrement())
   userId      Int       @map(name: "user_id")
-  quantity    Int
-  subtotal    Float
+  quantity    Int       @default(0)
+  subtotal    Float     @default(0)
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
   products    Product[] @relation("products_in_orders")
   user        User      @relation(fields: [userId], references: [id])
+}
+
+// Define Supplier model for suppliers table in database
+model Supplier {
+  @@map(name: "suppliers")
+
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(300)
+  stock       Int       @default(0)
+  products    Product[]
+}
+
+// Define Stock model for stocks table in database
+model Stock {
+  @@map(name: "stocks")
+
+  id          Int       @id @default(autoincrement())
+  productId   Int       @map(name: "product_id") @unique
+  quantity    Int       @default(0)
+  product     Product   @relation(fields: [productId], references: [id])
 }
