@@ -25,11 +25,11 @@ export const getProducts = async (req: Request, res: Response, next: any) => {
       throw { status: 400, message: 'Offset value must be numeric' };
     }
 
-    if ((Number.isNaN(Number(minPrice)) || !minPrice) && (minPrice as string).length !== 0) {
+    if ((Number.isNaN(Number(minPrice))) && (minPrice as string).length !== 0) {
       throw { status: 400, message: 'Minimum price must be numeric' };
     }
 
-    if ((Number.isNaN(Number(maxPrice)) || !maxPrice) && (maxPrice as string).length !== 0) {
+    if ((Number.isNaN(Number(maxPrice))) && (maxPrice as string).length !== 0) {
       throw { status: 400, message: 'Maximum price must be numeric' };
     }
 

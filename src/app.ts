@@ -3,6 +3,7 @@ import productRoutes from './routes/product-route.js';
 import orderRoutes from './routes/order-route.js';
 import userRoutes from './routes/user-route.js';
 import supplierRoutes from './routes/supplier-route.js';
+import stockRoutes from './routes/stock-route.js';
 import { Request, Response } from 'express';
 import { Error } from './models/error-model.js';
 
@@ -16,7 +17,7 @@ const port = process.env.PORT;
 app.use(express.urlencoded({ extended: false }));
 
 // Use middleware to group API route
-app.use('/api/v1', [productRoutes, userRoutes, supplierRoutes]);
+app.use('/api/v1', [productRoutes, userRoutes, supplierRoutes, stockRoutes]);
 
 // Use middleware to use global error handler
 app.use((error: Error, req: Request, res: Response, next: any) => {

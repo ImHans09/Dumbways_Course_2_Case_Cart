@@ -1,7 +1,63 @@
 import { Request, Response } from "express";
-import { prismaClient } from "../prisma/client.js";
+import { prisma, prismaClient } from "../prisma/client.js";
 
-// Update stock and quantity from product stock and supplier
+// Get suppliers data from database
+export const getSuppliers = async (req: Request, res: Response, next: any) => {
+  const { supplierId, supplierName, sortBy, sort, limit, offset } = req.query;
+  const supplierFields = prisma.dmmf.datamodel.models.find((model) => model.name === 'Supplier')?.fields.map((field) => field.name);
+  const sortMethods = ['asc', 'desc'];
+  const filters: any = {};
+
+  try {
+    if (!supplierFields?.includes(sortBy as string) && (sortBy as string).length !== 0) {
+      throw { status: 400, message: `Supplier doesn't have ${sortBy} property` };
+    }
+
+    if (!sortMethods.includes(sort as string) && (sort as string).length !== 0) {
+      throw { status: 400, message: 'Sort method is invalid' };
+    }
+
+    if (Number.isNaN(Number(limit)) && (limit as string).length !== 0) {
+      throw { status: 400, message: 'Limit value must be numeric' };
+    }
+
+    if (Number.isNaN(Number(offset)) && (offset as string).length !== 0) {
+      throw { status: 400, message: 'Offset value must be numeric' };
+    }
+
+    if (Number.isNaN(Number(supplierId)) && (supplierId as string).length !== 0) {
+      throw { status: 400, message: 'Supplier ID must be numeric' };
+    }
+
+    if (supplierId) filters.id = Number(supplierId);
+
+    if (supplierName) filters.name = supplierName as string;
+
+    const sortByStr = ((sortBy as string).length === 0) ? 'id' : sortBy as string;
+    const suppliers = await prismaClient.supplier.findMany({
+      where: filters,
+      orderBy: {
+        [sortByStr]: ((sort as string).length === 0) ? sortMethods[0] : sort as string
+      },
+      take: ((limit as string).length === 0) ? 5 : Number(limit),
+      skip: ((offset as string).length === 0) ? 0 : Number(offset)
+    });
+    const status = 200;
+    const response = {
+      success: true,
+      status: status,
+      message: 'Suppliers retrieved successfully',
+      dataCount: suppliers.length,
+      data: { suppliers: suppliers }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update stock and quantity from product stock and supplier in database
 export const updateStockAndQuantity = async (req: Request, res: Response, next: any) => {
   const { amount, supplierId, productId } = req.body;
 
@@ -64,4 +120,4 @@ export const updateStockAndQuantity = async (req: Request, res: Response, next: 
   } catch (error) {
     next(error);
   }
-}
+};
