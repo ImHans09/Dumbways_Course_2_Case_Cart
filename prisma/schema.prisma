@@ -20,8 +20,8 @@ model User {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(300)
   email       String    @unique @db.VarChar(300)
-  password    String    @db.VarChar(16)
-  point       Int       @default(0)
+  password    String    
+  point       Int       @default(100)
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
   orders      Order[]

@@ -1,3 +1,5 @@
+import bcrypt from 'bcrypt';
+import validator from 'validator';
 import { Request, Response } from "express";
 import { prisma, prismaClient } from "../prisma/client.js";
 
@@ -68,14 +70,18 @@ export const getUsers = async (req: Request, res: Response, next: any) => {
 
 // Create new user and insert to database
 export const createUser = async (req: Request, res: Response, next: any) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, passwordValidation } = req.body;
 
   try {
     if (name.trim().length === 0) throw { status: 400, message: 'Name is empty' };
 
     if (email.trim().length === 0) throw { status: 400, message: 'Email is empty' };
 
+    if (!validator.isEmail(email)) throw { status: 400, message: 'Input a valid email' };
+
     if (password.trim().length < 8) throw { status: 400, message: 'Password must be more than 8 characters' };
+
+    if (passwordValidation !== password) throw { status: 400, message: 'Input correct password validation' };
 
     const existingUser = await prismaClient.user.findUnique({
       where: { email: email }
@@ -83,11 +89,12 @@ export const createUser = async (req: Request, res: Response, next: any) => {
 
     if (existingUser !== null) throw { status: 400, message: 'User with this email has been registered' };
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prismaClient.user.create({
       data: {
         name: name,
         email: email,
-        password: password
+        password: hashedPassword
       }
     });
     const userArray = [user];
@@ -109,7 +116,7 @@ export const createUser = async (req: Request, res: Response, next: any) => {
 // Update user from database
 export const updateUser = async (req: Request, res: Response, next: any) => {
   const userId = Number(req.params.id);
-  const { name, email, password, point } = req.body;
+  const { name, email, password, passwordValidation, point } = req.body;
 
   try {
     if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
@@ -119,6 +126,8 @@ export const updateUser = async (req: Request, res: Response, next: any) => {
     if (email.trim().length === 0) throw { status: 400, message: 'Email is empty' };
 
     if (password.trim().length < 8) throw { status: 400, message: 'Password must be more than 8 characters' };
+
+    if (passwordValidation !== password) throw { status: 400, message: 'Input correct password validation' };
 
     if (Number.isNaN(point)) throw { status: 400, message: 'Point must be numeric' };
 
@@ -135,12 +144,13 @@ export const updateUser = async (req: Request, res: Response, next: any) => {
 
     if (existingUserEmail !== null && existingUser.email !== email) throw { status: 400, message: `This email has been already taken` };
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prismaClient.user.update({
       where: { id: userId },
       data: {
         name: name,
         email: email,
-        password: password,
+        password: hashedPassword,
         point: Number(point)
       }
     });
