@@ -14,7 +14,7 @@ export const updateStockAndQuantity = async (req: Request, res: Response, next: 
 
     if (Number.isNaN(Number(productId))) throw { status: 400, message: 'Product ID must be numeric' };
 
-    const [existingSupplier, existingProduct, existingStock] = await prismaClient.$transaction([
+    const [existingSupplier, existingProduct, existingStock] = await Promise.all([
       prismaClient.supplier.findUnique({
         where: { id: Number(supplierId) }
       }),
