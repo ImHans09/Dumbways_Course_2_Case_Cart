@@ -109,7 +109,7 @@ export const createUser = async (req: Request, res: Response, next: any) => {
 // Update user from database
 export const updateUser = async (req: Request, res: Response, next: any) => {
   const userId = Number(req.params.id);
-  const { name, email, password } = req.body;
+  const { name, email, password, point } = req.body;
 
   try {
     if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
@@ -119,6 +119,8 @@ export const updateUser = async (req: Request, res: Response, next: any) => {
     if (email.trim().length === 0) throw { status: 400, message: 'Email is empty' };
 
     if (password.trim().length < 8) throw { status: 400, message: 'Password must be more than 8 characters' };
+
+    if (Number.isNaN(point)) throw { status: 400, message: 'Point must be numeric' };
 
     const [existingUser, existingUserEmail] = await Promise.all([
       prismaClient.user.findUnique({
@@ -138,7 +140,8 @@ export const updateUser = async (req: Request, res: Response, next: any) => {
       data: {
         name: name,
         email: email,
-        password: password
+        password: password,
+        point: Number(point)
       }
     });
     const userArray = [user];
