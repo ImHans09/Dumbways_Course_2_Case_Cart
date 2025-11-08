@@ -65,7 +65,7 @@ export const validateUserUpdate = (id: number, name: string, email: string) => {
 export const validateUserLogin = (email: string, password: string) => {
   let error = {};
 
-  if (email.trim().length === 0) error = { status: 400, message: 'Name is empty' };
+  if (email.trim().length === 0) error = { status: 400, message: 'Email is empty' };
 
   if (!validator.isEmail(email)) error = { status: 400, message: 'Input a valid email' };
 
