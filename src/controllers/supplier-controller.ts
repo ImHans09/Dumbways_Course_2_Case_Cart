@@ -1,20 +1,31 @@
 import { Request, Response } from "express";
 import { prisma, prismaClient } from "../prisma/client.js";
+import { UserRole } from "@prisma/client";
 
-// Get suppliers data from database
-export const getSuppliers = async (req: Request, res: Response, next: any) => {
-  const { supplierId, supplierName, sortBy, sort, limit, offset } = req.query;
-  const supplierFields = prisma.dmmf.datamodel.models.find((model) => model.name === 'Supplier')?.fields.map((field) => field.name);
-  const sortMethods = ['asc', 'desc'];
+// Get products data from database
+export const getProducts = async (req: Request, res: Response, next: any) => {
+  const { minPrice, maxPrice, minStock, maxStock, orderBy, order, limit, offset } = req.query;
+  const role = (req as any).user.role;
+  const supplierId = (req as any).user.id;
+  const productFields = prisma.dmmf.datamodel.models.find((model) => model.name === 'Product')?.fields.map((field) => field.name);
+  const orderMethods = ['asc', 'desc'];
   const filters: any = {};
 
   try {
-    if (!supplierFields?.includes(sortBy as string) && (sortBy as string).length !== 0) {
-      throw { status: 400, message: `Supplier doesn't have ${sortBy} property` };
+    if (Number.isNaN(Number(supplierId))) {
+      throw { status: 400, message: "Supplier ID must be numeric" };
     }
 
-    if (!sortMethods.includes(sort as string) && (sort as string).length !== 0) {
-      throw { status: 400, message: 'Sort method is invalid' };
+    if ((role as UserRole) !== UserRole.SUPPLIER) {
+      throw { status: 400, message: "Unauthorized Supplier. Can't see the products" };
+    }
+
+    if (!productFields?.includes(orderBy as string) && (orderBy as string).length !== 0) {
+      throw { status: 400, message: `Product doesn't have ${orderBy as string} property` };
+    }
+
+    if (!orderMethods.includes(order as string) && (order as string).length !== 0) {
+      throw { status: 400, message: 'Order method is invalid' };
     }
 
     if (Number.isNaN(Number(limit)) && (limit as string).length !== 0) {
@@ -25,98 +36,56 @@ export const getSuppliers = async (req: Request, res: Response, next: any) => {
       throw { status: 400, message: 'Offset value must be numeric' };
     }
 
-    if (Number.isNaN(Number(supplierId)) && (supplierId as string).length !== 0) {
-      throw { status: 400, message: 'Supplier ID must be numeric' };
+    if ((Number.isNaN(Number(minPrice))) && (minPrice as string).length !== 0) {
+      throw { status: 400, message: 'Minimum price must be numeric' };
     }
 
-    if (supplierId) filters.id = Number(supplierId);
+    if ((Number.isNaN(Number(maxPrice))) && (maxPrice as string).length !== 0) {
+      throw { status: 400, message: 'Maximum price must be numeric' };
+    }
 
-    if (supplierName) filters.name = supplierName as string;
+    if (supplierId) filters.supplierId = Number(supplierId);
 
-    const sortByStr = ((sortBy as string).length === 0) ? 'id' : sortBy as string;
-    const suppliers = await prismaClient.supplier.findMany({
+    if (minPrice) filters.price = { gte: parseFloat(minPrice as string) };
+
+    if (maxPrice) {
+      filters.price = {
+        ...(filters.price || {}),
+        lte: parseFloat(maxPrice as string)
+      };
+    }
+
+    if (minStock) filters.stock = { gte: parseFloat(minStock as string) };
+
+    if (maxStock) {
+      filters.stock = {
+        ...(filters.stock || {}),
+        lte: parseFloat(maxStock as string)
+      };
+    }
+
+    const sortBy = ((orderBy as string).length === 0) ? 'id' : orderBy as string;
+    const products = await prismaClient.product.findMany({
       where: filters,
       orderBy: {
-        [sortByStr]: ((sort as string).length === 0) ? sortMethods[0] : sort as string
+        [sortBy]: ((order as string).length === 0) ? orderMethods[0] : order as string
       },
       take: ((limit as string).length === 0) ? 5 : Number(limit),
       skip: ((offset as string).length === 0) ? 0 : Number(offset)
     });
-    const status = 200;
+    const productsCount = await prismaClient.product.count({ where: filters });
+    const statusCode = 200;
     const response = {
       success: true,
-      status: status,
-      message: 'Suppliers retrieved successfully',
-      dataCount: suppliers.length,
-      data: { suppliers: suppliers }
-    };
-
-    res.status(status).json(response);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Update stock and quantity from product stock and supplier in database
-export const updateStockAndQuantity = async (req: Request, res: Response, next: any) => {
-  const { amount, supplierId, productId } = req.body;
-
-  try {
-    if (Number.isNaN(Number(amount))) throw { status: 400, message: 'Amount must be numeric' };
-
-    if (Number(amount) <= 0) throw { status: 400, message: 'Amount must be greater than 0' };
-
-    if (Number.isNaN(Number(supplierId))) throw { status: 400, message: 'Supplier ID must be numeric' };
-
-    if (Number.isNaN(Number(productId))) throw { status: 400, message: 'Product ID must be numeric' };
-
-    const [existingSupplier, existingProduct, existingStock] = await Promise.all([
-      prismaClient.supplier.findUnique({
-        where: { id: Number(supplierId) }
-      }),
-      prismaClient.product.findUnique({
-        where: { id: Number(productId) }
-      }),
-      prismaClient.stock.findUnique({
-        where: { productId: Number(productId) }
-      })
-    ]);
-
-    if (existingSupplier === null) throw { status: 404, message: `Supplier with ID: ${supplierId} is not found` };
-
-    if (existingProduct === null) throw { status: 404, message: `Product with ID: ${productId} is not found` };
-
-    if (existingStock === null) throw { status: 404, message: `Stock with ID: ${productId} is not found` };
-
-    if (existingSupplier.stock < Number(amount)) throw { status: 400, message: `Supplier stock is not sufficient` };
-
-    const supplierAndProductStock = await prismaClient.$transaction([
-      prismaClient.supplier.update({
-        where: { id: Number(supplierId) },
-        data: {
-          stock: { decrement: Number(amount) }
-        }
-      }),
-      prismaClient.stock.update({
-        where: { productId: Number(productId) },
-        data: {
-          quantity: { increment: Number(amount) }
-        }
-      })
-    ]);
-    const status = 201;
-    const response = {
-      success: true,
-      status: status,
-      message: `${existingProduct.name} stock has been updated`,
-      dataCount: supplierAndProductStock.length,
-      data: { 
-        supplier: supplierAndProductStock[0],
-        stock: supplierAndProductStock[1]
+      code: statusCode,
+      message: 'Products retrieved successfully',
+      dataCount: productsCount,
+      data: {
+        products: products
       }
     };
 
-    res.status(status).json(response);
+    res.status(statusCode).json(response);
   } catch (error) {
     next(error);
   }

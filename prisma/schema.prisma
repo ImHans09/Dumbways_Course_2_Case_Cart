@@ -21,10 +21,10 @@ model User {
   name        String    @db.VarChar(300)
   email       String    @unique @db.VarChar(300)
   password    String    
-  point       Int       @default(100)
+  role        UserRole  @default(CUSTOMER)
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
-  orders      Order[]
+  products    Product[]
 }
 
 // Define Product model for products table in database
@@ -35,43 +35,17 @@ model Product {
   supplierId  Int       @map(name: "supplier_id")
   name        String    @db.VarChar(300)
   price       Float     @default(0)
-  createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
-  updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
-  stock       Stock?
-  orders      Order[]   @relation("products_in_orders")
-  supplier    Supplier  @relation(fields: [supplierId], references: [id])
-}
-
-// Define Order model for orders table in database
-model Order {
-  @@map(name: "orders")
-
-  id          Int       @id @default(autoincrement())
-  userId      Int       @map(name: "user_id")
-  quantity    Int       @default(0)
-  subtotal    Float     @default(0)
-  createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
-  updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
-  products    Product[] @relation("products_in_orders")
-  user        User      @relation(fields: [userId], references: [id])
-}
-
-// Define Supplier model for suppliers table in database
-model Supplier {
-  @@map(name: "suppliers")
-
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(300)
   stock       Int       @default(0)
-  products    Product[]
+  createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
+  updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
+  supplier    User      @relation(fields: [supplierId], references: [id])
 }
 
-// Define Stock model for stocks table in database
-model Stock {
-  @@map(name: "stocks")
+// Define user role enum for User model
+enum UserRole {
+  @@map(name: "userrole")
 
-  id          Int       @id @default(autoincrement())
-  productId   Int       @map(name: "product_id") @unique
-  quantity    Int       @default(0)
-  product     Product   @relation(fields: [productId], references: [id])
+  ADMIN     @map(name: "admin")
+  CUSTOMER  @map(name: "customer")
+  SUPPLIER  @map(name: "supplier")
 }

@@ -1,9 +1,7 @@
 import express from 'express';
 import productRoutes from './routes/product-route.js';
-import orderRoutes from './routes/order-route.js';
 import userRoutes from './routes/user-route.js';
 import supplierRoutes from './routes/supplier-route.js';
-import stockRoutes from './routes/stock-route.js';
 import { Request, Response } from 'express';
 import { Error } from './models/error-model.js';
 
@@ -11,13 +9,13 @@ import { Error } from './models/error-model.js';
 const app = express();
 
 // Get port from environment
-const port = process.env.PORT;
+const PORT = process.env.PORT;
 
 // Parse user data from input form
 app.use(express.urlencoded({ extended: false }));
 
 // Use middleware to group API route
-app.use('/api/v1', [productRoutes, userRoutes, supplierRoutes, stockRoutes]);
+app.use('/api/v1', [userRoutes, supplierRoutes, productRoutes]);
 
 // Use middleware to use global error handler
 app.use((error: Error, req: Request, res: Response, next: any) => {
@@ -34,6 +32,6 @@ app.use((error: Error, req: Request, res: Response, next: any) => {
 });
 
 // Running application
-app.listen(port, () => {
-  console.log(`Listening app on http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`Listening app on http://localhost:${PORT}`);
 });

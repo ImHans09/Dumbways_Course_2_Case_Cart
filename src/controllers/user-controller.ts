@@ -1,113 +1,80 @@
-import bcrypt from 'bcrypt';
-import validator from 'validator';
 import { Request, Response } from "express";
-import { prisma, prismaClient } from "../prisma/client.js";
+import { validateGetUsersQuery, validateUserCreation, validateUserLogin, validateUserUpdate } from '../utils/user/user-validation.js';
+import { userListSelection, userCreation, userLogin, existingUserEmail, userUpdate } from '../utils/user/user-data-manipulation.js';
+import { response } from '../utils/response.js';
+import { UserRole } from '@prisma/client';
+import { signToken } from "../utils/jwt.js";
+import { UserPayload } from "../models/userpayload-model.js";
 
 // Get users data from database
 export const getUsers = async (req: Request, res: Response, next: any) => {
-  const { minPoint, maxPoint, sortBy, sort, limit, offset } = req.query;
-  const userFields = prisma.dmmf.datamodel.models.find((model) => model.name === 'User')?.fields.map((field) => field.name);
-  const sortMethods = ['asc', 'desc'];
-  const filters: any = {}
+  const { role, sortBy, sort, limit, offset } = req.query;
+  const lowercaseSortBy = (sortBy as string).toLowerCase();
+  const lowercaseSort = (sort as string).toLowerCase();
+  const getUsersQueryValidation = validateGetUsersQuery(role as UserRole, lowercaseSortBy, lowercaseSort, limit as string, offset as string);
+  const filters: any = {};
 
   try {
-    if ((Number.isNaN(Number(minPoint as string)) || !minPoint) && (minPoint as string).length !== 0) {
-      throw { status: 400, message: 'Minimum point must be numeric' };
-    }
+    if (Object.keys(getUsersQueryValidation).length !== 0) throw getUsersQueryValidation;
+    if (role) filters.role = role;
 
-    if ((Number.isNaN(Number(maxPoint as string)) || !maxPoint) && (maxPoint as string).length !== 0) {
-      throw { status: 400, message: 'Maximum point must be numeric' };
-    }
+    const users = await userListSelection(lowercaseSortBy, lowercaseSort, limit as string, offset as string, filters, next);
 
-    if (!userFields?.includes(sortBy as string) && (sortBy as string).length !== 0) {
-      throw { status: 400, message: `User doesn't have ${sortBy} property` };
-    }
-
-    if (!sortMethods.includes(sort as string) && (sort as string).length !== 0) {
-      throw { status: 400, message: 'Sort method is invalid' };
-    }
-
-    if (Number.isNaN(Number(limit as string)) && (limit as string).length !== 0) {
-      throw { status: 400, message: 'Limit value must be numeric' };
-    }
-
-    if (Number.isNaN(Number(offset as string)) && (offset as string).length !== 0) {
-      throw { status: 400, message: 'Offset value must be numeric' };
-    }
-
-    if (minPoint) filters.point = { gte: Number(minPoint as string) };
-
-    if (maxPoint) {
-      filters.point = {
-        ...(filters.point || {}),
-        lte: Number(maxPoint as string)
-      };
-    }
-
-    const sortByStr = ((sortBy as string).length === 0) ? 'id' : sortBy as string;
-    const users = await prismaClient.user.findMany({
-      where: filters,
-      orderBy: {
-        [sortByStr]: ((sort as string).length === 0) ? sortMethods[0] : sort as string
-      },
-      take: ((limit as string).length === 0) ? 5 : Number(limit as string),
-      skip: ((offset as string).length === 0) ? 0 : Number(offset as string)
-    });
-    const status = 200;
-    const response = {
-      success: true,
-      status: status,
-      message: 'Users retrieved successfully',
-      dataCount: users.length,
-      data: { users: users }
-    };
-
-    res.status(status).json(response);
+    res.status(users?.status as number).json(response(true, users?.status as number, 'Users retrieved successfully', (users?.data as []).length, { users: users?.data }));
   } catch (error) {
     next(error);
   }
 };
 
-// Create new user and insert to database
-export const createUser = async (req: Request, res: Response, next: any) => {
+// Create new admin and insert to database
+export const createUserAdmin = async (req: Request, res: Response, next: any) => {
   const { name, email, password, passwordValidation } = req.body;
+  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
+  const userEmail = await existingUserEmail(email);
 
   try {
-    if (name.trim().length === 0) throw { status: 400, message: 'Name is empty' };
+    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
+    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
 
-    if (email.trim().length === 0) throw { status: 400, message: 'Email is empty' };
+    const user = await userCreation(name, email, password, UserRole.ADMIN, next);
 
-    if (!validator.isEmail(email)) throw { status: 400, message: 'Input a valid email' };
+    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
+  } catch (error) {
+    next(error);
+  }
+};
 
-    if (password.trim().length < 8) throw { status: 400, message: 'Password must be more than 8 characters' };
+// Create new customer and insert to database
+export const createUserCustomer = async (req: Request, res: Response, next: any) => {
+  const { name, email, password, passwordValidation } = req.body;
+  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
+  const userEmail = await existingUserEmail(email);
 
-    if (passwordValidation !== password) throw { status: 400, message: 'Input correct password validation' };
+  try {
+    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
+    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
 
-    const existingUser = await prismaClient.user.findUnique({
-      where: { email: email }
-    });
+    const user = await userCreation(name, email, password, UserRole.CUSTOMER, next);
 
-    if (existingUser !== null) throw { status: 400, message: 'User with this email has been registered' };
+    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prismaClient.user.create({
-      data: {
-        name: name,
-        email: email,
-        password: hashedPassword
-      }
-    });
-    const userArray = [user];
-    const status = 201;
-    const response = {
-      success: true,
-      status: status,
-      message: 'User created successfully',
-      dataCount: userArray.length,
-      data: { users: userArray }
-    };
+// Create new supplier and insert to database
+export const createUserSupplier = async (req: Request, res: Response, next: any) => {
+  const { name, email, password, passwordValidation } = req.body;
+  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
+  const userEmail = await existingUserEmail(email);
 
-    res.status(status).json(response);
+  try {
+    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
+    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
+
+    const user = await userCreation(name, email, password, UserRole.SUPPLIER, next);
+
+    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
   } catch (error) {
     next(error);
   }
@@ -116,147 +83,85 @@ export const createUser = async (req: Request, res: Response, next: any) => {
 // Update user from database
 export const updateUser = async (req: Request, res: Response, next: any) => {
   const userId = Number(req.params.id);
-  const { name, email, password, passwordValidation, point } = req.body;
+  const role = (req as any).user.role;
+  const { name, email } = req.body;
+  const userInputValidation = validateUserUpdate(userId, name, email);
 
   try {
-    if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
+    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
 
-    if (name.trim().length === 0) throw { status: 400, message: 'Name is empty' };
+    const user = await userUpdate(userId, name, email, role as UserRole, next);
 
-    if (email.trim().length === 0) throw { status: 400, message: 'Email is empty' };
-
-    if (password.trim().length < 8) throw { status: 400, message: 'Password must be more than 8 characters' };
-
-    if (passwordValidation !== password) throw { status: 400, message: 'Input correct password validation' };
-
-    if (Number.isNaN(point)) throw { status: 400, message: 'Point must be numeric' };
-
-    const [existingUser, existingUserEmail] = await Promise.all([
-      prismaClient.user.findUnique({
-        where: { id: userId }
-      }),
-      prismaClient.user.findUnique({
-        where: { email: email }
-      })
-    ]);
-
-    if (existingUser === null) throw { status: 404, message: `User with ID: ${userId} is not found` };
-
-    if (existingUserEmail !== null && existingUser.email !== email) throw { status: 400, message: `This email has been already taken` };
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prismaClient.user.update({
-      where: { id: userId },
-      data: {
-        name: name,
-        email: email,
-        password: hashedPassword,
-        point: Number(point)
-      }
-    });
-    const userArray = [user];
-    const status = 201;
-    const response = {
-      success: true,
-      status: status,
-      message: 'User updated successfully',
-      dataCount: userArray.length,
-      data: { users: userArray }
-    };
-
-    res.status(status).json(response);
+    res.status(user?.status as number).json(response(true, user?.status as number, 'User updated successfully', [user?.data].length, { user: user?.data }));
   } catch (error) {
     next(error);
   }
 };
 
-// Update users point by transfering point
-export const transferPoint = async (req: Request, res: Response, next: any) => {
-  const { amount, senderId, receiverId } = req.body;
-
+// Login user
+export const loginUser = async (req: Request, res: Response, next: any) => {
+  const { email, password } = req.body;
+  const userInputValidation = validateUserLogin(email, password);
+  const userEmail = await existingUserEmail(email);
+  
   try {
-    if (Number.isNaN(Number(amount))) throw { status: 400, message: 'Amount point value must be number' };
-
-    if (Number(amount) <= 0) throw { status: 400, message: 'Amount point value must be greater than 0' };
-
-    if (Number.isNaN(Number(senderId)) || senderId.length === 0) throw { status: 400, message: 'Sender ID must be number' };
-
-    if (Number.isNaN(Number(receiverId)) || receiverId.length === 0) throw { status: 400, message: 'Receiver ID must be number' };
-
-    const [sender, receiver] = await Promise.all([
-      prismaClient.user.findUnique({ where: { id: Number(senderId) } }),
-      prismaClient.user.findUnique({ where: { id: Number(receiverId) } })
-    ]);
-
-    if (!sender) throw { status: 404, message: `User with ID: ${senderId} is not found`};
-
-    if (!receiver) throw { status: 404, message: `User with ID: ${receiverId} is not found`};
-
-    if (sender.point < Number(amount)) throw { status: 400, message: `Point is not sufficient`};
+    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
+    if (!userEmail) throw { status: 404, message: 'User with this email is not found' };
     
-    const userArray = await prismaClient.$transaction([
-      prismaClient.user.update({
-        where: { id: Number(senderId) },
-        data: { 
-          point: { decrement: Number(amount)}
-        }
-      }),
-      prismaClient.user.update({
-        where: { id: Number(receiverId) },
-        data: {
-          point: { increment: Number(amount) }
-        }
-      })
-    ]);
-
-    const status = 201;
+    const user = await userLogin(email, password, next);
+    const userPayload = {
+      id: user?.data.id,
+      role: user?.data.role
+    };
+    const token = signToken(userPayload as UserPayload);
     const response = {
       success: true,
-      status: status,
-      message: `Transfer point to ${receiver.name} success`,
-      dataCount: userArray.length,
-      data: { users: userArray }
+      status: user?.status as number,
+      message: 'Log in success!',
+      token: token,
+      dataCount: [userPayload].length,
+      data: { user: userPayload }
     };
 
-    res.status(status).json(response);
+    res.status(user?.status as number).json(response);
   } catch (error) {
     next(error);
   }
 };
 
 // Delete user from database
-export const deleteUser = async (req: Request, res: Response, next: any) => {
-  const userId = Number(req.params.id);
+// export const deleteUser = async (req: Request, res: Response, next: any) => {
+//   const userId = Number(req.params.id);
   
-  try {
-    if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
+//   try {
+//     if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
 
-    const existingUser = await prismaClient.user.findUnique({
-      where: { id: userId }
-    });
+//     const existingUser = await prismaClient.user.findUnique({
+//       where: { id: userId }
+//     });
 
-    if (existingUser === null) throw { status: 404, message: `User with ID: ${userId} is not found` };
+//     if (existingUser === null) throw { status: 404, message: `User with ID: ${userId} is not found` };
 
-    const deletedOrdersAndUser = await prismaClient.$transaction([
-      prismaClient.order.deleteMany({
-        where: { userId: userId}
-      }),
-      prismaClient.user.delete({
-        where: { id: userId }
-      })
-    ]);
-    const userArray = [deletedOrdersAndUser[1]];
-    const status = 200;
-    const response = {
-      success: true,
-      status: status,
-      message: 'User deleted successfully',
-      dataCount: userArray.length,
-      data: { users: userArray }
-    };
+//     const deletedOrdersAndUser = await prismaClient.$transaction([
+//       prismaClient.order.deleteMany({
+//         where: { userId: userId}
+//       }),
+//       prismaClient.user.delete({
+//         where: { id: userId }
+//       })
+//     ]);
+//     const userArray = [deletedOrdersAndUser[1]];
+//     const status = 200;
+//     const response = {
+//       success: true,
+//       status: status,
+//       message: 'User deleted successfully',
+//       dataCount: userArray.length,
+//       data: { users: userArray }
+//     };
 
-    res.status(status).json(response);
-  } catch (error) {
-    next(error);
-  }
-};
+//     res.status(status).json(response);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
