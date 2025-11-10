@@ -1,33 +1,25 @@
 import { Router } from "express";
-import { getUsers, createUserAdmin, createUserCustomer, createUserSupplier, updateUser, loginUser } from "../controllers/user-controller.js";
-import { authenticate } from "../middlerwares/auth-middleware.js";
+import { handleUserAdminRegistration, handleUserCustomerRegistration, handleUsersSelected, handleUserSupplierRegistration, handleUserUpdate, handleUserUpdateProfileImage, handleUserLogin, handleAllUsersTruncation } from "../controllers/user-controller.js";
+import { authenticate } from "../middlerwares/user-authentication.js";
+import { authorizeAdmin } from "../middlerwares/user-admin-authorization.js";
+import { upload } from "../utils/multer.js";
 
-// Create Router instance
 const router = Router();
 
-// Route to get users
-router.get('/users', getUsers);
+router.get('/users', authenticate, authorizeAdmin, handleUsersSelected);
 
-// Route to create admin
-router.post('/users/register/admin', createUserAdmin);
+router.post('/login', handleUserLogin);
 
-// Route to create customer
-router.post('/users/register', createUserCustomer);
+router.post('/admin/register', handleUserAdminRegistration);
 
-// Route to create supplier
-router.post('/users/register/supplier', createUserSupplier);
+router.post('/register', handleUserCustomerRegistration);
 
-// Route to update user
-router.put('/users/:id', authenticate, updateUser);
+router.post('/supplier/register', handleUserSupplierRegistration);
 
-// Route to authenticate user
-router.post('/users/login', loginUser);
+router.put('/user/update/:id', authenticate, handleUserUpdate);
 
-// Route to transfer point between users
-// router.put('/transfer-points', transferPoint);
+router.put('/user/update/profile-image/:id', authenticate, upload.single('profileImage'), handleUserUpdateProfileImage);
 
-// Route to delete user
-// router.delete('/users/:id', deleteUser);
+router.delete('/users/delete-all', handleAllUsersTruncation);
 
-// Set default export for router variable
 export default router;

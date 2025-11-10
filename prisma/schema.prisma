@@ -22,6 +22,7 @@ model User {
   email       String    @unique @db.VarChar(300)
   password    String    
   role        UserRole  @default(CUSTOMER)
+  imageName   String?   @map(name: "image_name")
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
   products    Product[]
@@ -36,6 +37,7 @@ model Product {
   name        String    @db.VarChar(300)
   price       Float     @default(0)
   stock       Int       @default(0)
+  imageName   String?   @map(name: "image_name")
   createdAt   DateTime  @map(name: "created_at") @default(now()) @db.Timestamp(4)
   updatedAt   DateTime  @map(name: "updated_at") @default(now()) @db.Timestamp(4)
   supplier    User      @relation(fields: [supplierId], references: [id])

@@ -1,122 +1,91 @@
-import { Request, Response } from "express";
-import { prisma, prismaClient } from "../prisma/client.js";
-import { response } from "../utils/response.js";
-import { UserRole } from "@prisma/client";
+import Joi from "joi";
+import { NextFunction, Request, Response } from "express";
+import { createProduct, getAllProducts, updateProductImage } from "../services/product-service.js";
 
-// Create new product data and insert into database
-export const createProduct = async (req: Request, res: Response, next: any) => {
-  const { name, price, stock } = req.body;
-  const role = (req as any).user.role;
-  const supplierId = (req as any).user.id;
-
+export const handleAllProductsSelected = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (Number.isNaN(Number(supplierId))) {
-      throw { status: 400, message: "Supplier ID must be numeric" };
-    }
+    const products = await getAllProducts(next);
+    const status = 200;
+    const response = {
+      success: true,
+      status: status,
+      message: 'Products retrieved successfully',
+      dataCount: products?.length,
+      data: { products: products }
+    };
 
-    if ((role as UserRole) !== UserRole.SUPPLIER) {
-      throw { status: 400, message: "Unauthorized Supplier. Can't see the products" };
-    }
-
-    if (name.trim().length < 3) {
-      throw { status: 400, message: "Product name must be greater than 3 characters" };
-    }
-
-    if (Number.isNaN(Number(price))) {
-      throw { status: 400, message: "Product price must be numeric" };
-    }
-
-    if (Number.isNaN(Number(stock))) {
-      throw { status: 400, message: "Product stock must be numeric" };
-    }
-
-    if (Number(price) < 500) {
-      throw { status: 400, message: "Product price must be greater than Rp 500,00" };
-    }
-
-    if (Number(stock) <= 0) {
-      throw { status: 400, message: "Product stock must be greater than 0" };
-    }
-
-    const product = await prismaClient.product.create({
-      data: {
-        supplierId: Number(supplierId),
-        name: name,
-        price: parseFloat(price),
-        stock: Number(stock)
-      }
-    });
-
-    res.status(201).json(response(true, 201, 'New product added successfully', [product].length, { product: product }));
+    res.status(status).json(response);
   } catch (error) {
     next(error);
   }
 };
 
-// Update product from database
-export const updateProduct = async (req: Request, res: Response, next: any) => {
-  const productId = Number(req.params.id);
-  const role = (req as any).user.role;
-  const supplierId = (req as any).user.id;
-  const { name, price, stock } = req.body;
+export const handleProductCreation = async (req: Request, res: Response, next: NextFunction) => {
+  const supplierId: number = (req as any).user.id;
+  const schema = Joi.object({
+    supplierId: Joi.number().integer().required().error(new Error('Supplier ID is invalid')),
+    name: Joi.string().min(4).max(40).required().error(new Error('Name must be greater than 4 characters')),
+    price: Joi.number().min(500).precision(2).required().error(new Error('Price must be numeric and greater than Rp 500')),
+    stock: Joi.number().integer().min(10).required().error(new Error('Stock must be numeric and greater than 10'))
+  });
+  const { error } = schema.validate({
+    supplierId: supplierId,
+    name: req.body.name,
+    price: parseFloat(req.body.price),
+    stock: Number(req.body.stock)
+  });
 
   try {
-    if (Number.isNaN(productId)) {
-      throw { status: 400, message: 'Product ID is invalid' };
-    }
+    if (error) throw { status: 400, message: error.message };
 
-    if (Number.isNaN(Number(supplierId))) {
-      throw { status: 400, message: "Supplier ID must be numeric" };
-    }
+    const { name, price, stock } = req.body;
+    const product = await createProduct(supplierId, name, parseFloat(price), Number(stock), next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'Products created successfully',
+      dataCount: [product].length,
+      data: { product: product }
+    };
 
-    if ((role as UserRole) !== UserRole.SUPPLIER) {
-      throw { status: 400, message: "Unauthorized Supplier. Can't see the products" };
-    }
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
 
-    if (name.trim().length < 3) {
-      throw { status: 400, message: 'Product name must be greater than 3 characters' };
-    }
+export const handleProductImageUpdate = async (req: Request, res: Response, next: NextFunction) => {
+  const productId = Number(req.params.id);
+  const supplierId: number = (req as any).user.id;
+  const imageFile = req.file;
+  const schema = Joi.object({
+    id: Joi.number().integer().required().error(new Error('Product ID is invalid')),
+    supplierId: Joi.number().integer().required().error(new Error('Supplier ID is invalid')),
+    imageName: Joi.string().required().error(new Error('Image name is invalid'))
+  });
+  const { error } = schema.validate({
+    id: productId,
+    supplierId: supplierId,
+    imageName: imageFile?.filename
+  });
 
-    if (Number.isNaN(Number(price))) {
-      throw { status: 400, message: "Product price must be numeric" };
-    }
+  try {
+    if (!imageFile) throw { status: 404, message: 'Product image is not uploaded' };
 
-    if (Number.isNaN(Number(stock))) {
-      throw { status: 400, message: "Product stock must be numeric" };
-    }
+    if (error) throw { status: 400, message: error.message };
 
-    if (Number(price) < 500) {
-      throw { status: 400, message: "Product price must be greater than Rp 500,00" };
-    }
+    const product = await updateProductImage(productId, supplierId, imageFile.filename, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'Products image uploaded successfully',
+      dataCount: [product].length,
+      data: { product: product }
+    };
 
-    if (Number(stock) <= 0) {
-      throw { status: 400, message: "Product stock must be greater than 0" };
-    }
-
-    const existingProduct = await prismaClient.product.findUnique({
-      select: { stock: true },
-      where: { 
-        id: productId,
-        supplierId: Number(supplierId)
-      }
-    });
-
-    if (existingProduct === null) {
-      throw { status: 404, message: `Product with ID: ${productId} from this supplier is not found` };
-    }
-
-    const updateDate = new Date(Date.now());
-    const updatedProduct = await prismaClient.product.update({
-      where: { id: productId },
-      data: {
-        name: name,
-        price: parseFloat(price),
-        stock: existingProduct.stock + Number(stock),
-        updatedAt: updateDate
-      }
-    });
-
-    res.status(200).json(response(true, 200, 'Product updated successfully', [updatedProduct].length, { product: updatedProduct }));
+    res.status(status).json(response);
   } catch (error) {
     next(error);
   }

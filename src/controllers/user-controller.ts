@@ -1,167 +1,239 @@
-import { Request, Response } from "express";
-import { validateGetUsersQuery, validateUserCreation, validateUserLogin, validateUserUpdate } from '../utils/user/user-validation.js';
-import { userListSelection, userCreation, userLogin, existingUserEmail, userUpdate } from '../utils/user/user-data-manipulation.js';
-import { response } from '../utils/response.js';
-import { UserRole } from '@prisma/client';
+import Joi from "joi";
+import { NextFunction, Request, Response } from "express";
+import { prisma } from "../prisma/client.js";
+import { getUsers, logUserIn, registerUser, truncateAllUsers, updateUser, updateUserProfileImage } from "../services/user-service.js";
+import { UserRole } from "@prisma/client";
 import { signToken } from "../utils/jwt.js";
 import { UserPayload } from "../models/userpayload-model.js";
 
-// Get users data from database
-export const getUsers = async (req: Request, res: Response, next: any) => {
-  const { role, sortBy, sort, limit, offset } = req.query;
-  const lowercaseSortBy = (sortBy as string).toLowerCase();
-  const lowercaseSort = (sort as string).toLowerCase();
-  const getUsersQueryValidation = validateGetUsersQuery(role as UserRole, lowercaseSortBy, lowercaseSort, limit as string, offset as string);
-  const filters: any = {};
-
-  try {
-    if (Object.keys(getUsersQueryValidation).length !== 0) throw getUsersQueryValidation;
-    if (role) filters.role = role;
-
-    const users = await userListSelection(lowercaseSortBy, lowercaseSort, limit as string, offset as string, filters, next);
-
-    res.status(users?.status as number).json(response(true, users?.status as number, 'Users retrieved successfully', (users?.data as []).length, { users: users?.data }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Create new admin and insert to database
-export const createUserAdmin = async (req: Request, res: Response, next: any) => {
-  const { name, email, password, passwordValidation } = req.body;
-  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
-  const userEmail = await existingUserEmail(email);
-
-  try {
-    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
-    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
-
-    const user = await userCreation(name, email, password, UserRole.ADMIN, next);
-
-    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Create new customer and insert to database
-export const createUserCustomer = async (req: Request, res: Response, next: any) => {
-  const { name, email, password, passwordValidation } = req.body;
-  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
-  const userEmail = await existingUserEmail(email);
-
-  try {
-    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
-    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
-
-    const user = await userCreation(name, email, password, UserRole.CUSTOMER, next);
-
-    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Create new supplier and insert to database
-export const createUserSupplier = async (req: Request, res: Response, next: any) => {
-  const { name, email, password, passwordValidation } = req.body;
-  const userInputValidation = validateUserCreation(name, email, password, passwordValidation);
-  const userEmail = await existingUserEmail(email);
-
-  try {
-    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
-    if (userEmail) throw { status: 400, message: 'User with this email has been registered' };
-
-    const user = await userCreation(name, email, password, UserRole.SUPPLIER, next);
-
-    res.status(user?.status as number).json(response(true, user?.status as number, 'User created successfully', [user?.data].length, { user: user?.data }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Update user from database
-export const updateUser = async (req: Request, res: Response, next: any) => {
-  const userId = Number(req.params.id);
-  const role = (req as any).user.role;
-  const { name, email } = req.body;
-  const userInputValidation = validateUserUpdate(userId, name, email);
-
-  try {
-    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
-
-    const user = await userUpdate(userId, name, email, role as UserRole, next);
-
-    res.status(user?.status as number).json(response(true, user?.status as number, 'User updated successfully', [user?.data].length, { user: user?.data }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Login user
-export const loginUser = async (req: Request, res: Response, next: any) => {
-  const { email, password } = req.body;
-  const userInputValidation = validateUserLogin(email, password);
-  const userEmail = await existingUserEmail(email);
+export const handleUsersSelected = async (req: Request, res: Response, next: NextFunction) => {
+  const userFields = prisma.dmmf.datamodel.models.find(model => model.name === 'User')?.fields.map(field => field.name);
+  const sortMethods = ['asc', 'desc'];
+  const schema = Joi.object({
+    role: Joi.string().valid(...Object.values(UserRole)).allow('').optional().error(new Error('Role is invalid')),
+    sortBy: Joi.string().lowercase().valid(...userFields!).allow('').optional().error(new Error("User doesn't have this property")),
+    sort: Joi.string().lowercase().valid(...sortMethods).allow('').optional().error(new Error('Sort method is invalid')),
+    limit: Joi.number().integer().min(5).allow('').optional().error(new Error('Limit must be integer and minimum value is 5')),
+    offset: Joi.number().integer().min(1).allow('').optional().error(new Error('Offset must be integer and minimum value is 1'))
+  });
+  const { error } = schema.validate(req.query);
   
   try {
-    if (Object.keys(userInputValidation).length !== 0) throw userInputValidation;
-    if (!userEmail) throw { status: 404, message: 'User with this email is not found' };
+    if (error) throw { status: 400, message: error.message };
+
+    const { role, sortBy, sort, limit, offset } = req.query;
+    const filters: any = {};
     
-    const user = await userLogin(email, password, next);
-    const userPayload = {
-      id: user?.data.id,
-      role: user?.data.role
-    };
-    const token = signToken(userPayload as UserPayload);
+    if (role) filters.role = role as UserRole;
+
+    const users = await getUsers(
+      filters, 
+      ((sortBy as string).length === 0) ? (userFields as string[])[0] as string : sortBy as string, 
+      ((sort as string).length === 0) ? sortMethods[0] as string : sort as string, 
+      ((limit as string).length === 0) ? 5 : Number(limit as string),
+      ((offset as string).length === 0) ? 0 : Number(offset as string), 
+      next
+    );
+    const status = 200;
     const response = {
       success: true,
-      status: user?.status as number,
-      message: 'Log in success!',
-      token: token,
-      dataCount: [userPayload].length,
-      data: { user: userPayload }
+      status: status,
+      message: 'User retrieved successfully',
+      dataCount: (users) ? users.length : 0,
+      data: { users: users }
     };
 
-    res.status(user?.status as number).json(response);
+    res.status(status).json(response);
   } catch (error) {
     next(error);
   }
 };
 
-// Delete user from database
-// export const deleteUser = async (req: Request, res: Response, next: any) => {
-//   const userId = Number(req.params.id);
-  
-//   try {
-//     if (Number.isNaN(userId)) throw { status: 400, message: 'User ID must be numeric' };
+export const handleUserLogin = async (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    email: Joi.string().email({ allowFullyQualified: true, minDomainSegments: 2, tlds: { allow: ['com'] } }).required().error(new Error('Email is invalid')),
+    password: Joi.string().alphanum().min(8).required().error(new Error('Password must be greater than 8 characters')),
+  });
+  const { error } = schema.validate(req.body);
 
-//     const existingUser = await prismaClient.user.findUnique({
-//       where: { id: userId }
-//     });
+  try {
+    if (error) throw { status: 400, message: error.message };
 
-//     if (existingUser === null) throw { status: 404, message: `User with ID: ${userId} is not found` };
+    const { email, password } = req.body;
+    const user = await logUserIn(email, password, next);
+    const token = signToken(user as UserPayload);
+    const status = 200;
+    const response = {
+      success: true,
+      status: status,
+      message: 'Login success!',
+      token: token,
+      dataCount: [user].length,
+      data: { user: user }
+    };
 
-//     const deletedOrdersAndUser = await prismaClient.$transaction([
-//       prismaClient.order.deleteMany({
-//         where: { userId: userId}
-//       }),
-//       prismaClient.user.delete({
-//         where: { id: userId }
-//       })
-//     ]);
-//     const userArray = [deletedOrdersAndUser[1]];
-//     const status = 200;
-//     const response = {
-//       success: true,
-//       status: status,
-//       message: 'User deleted successfully',
-//       dataCount: userArray.length,
-//       data: { users: userArray }
-//     };
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
 
-//     res.status(status).json(response);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
+export const handleUserAdminRegistration = async (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    name: Joi.string().min(4).max(40).required().error(new Error('Name must be greater than 4 characters')),
+    email: Joi.string().email({ allowFullyQualified: true, minDomainSegments: 2, tlds: { allow: ['com'] } }).required().error(new Error('Email is invalid')),
+    password: Joi.string().alphanum().min(8).required().error(new Error('Password must be greater than 8 characters')),
+    repeatPassword: Joi.valid(Joi.ref('password')).required().error(new Error('Password validation is incorrect'))
+  });
+  const { error } = schema.validate(req.body);
+
+  try {
+    if (error) throw { status: 400, message: error.message };
+
+    const { name, email, password } = req.body;
+    const user = await registerUser(name, email, password, UserRole.ADMIN, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'User registered successfully',
+      dataCount: [user].length,
+      data: { user: user }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleUserCustomerRegistration = async (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    name: Joi.string().min(4).max(40).required().error(new Error('Name must be greater than 4 characters')),
+    email: Joi.string().email({ allowFullyQualified: true, minDomainSegments: 2, tlds: { allow: ['com'] } }).required().error(new Error('Email is invalid')),
+    password: Joi.string().alphanum().min(8).required().error(new Error('Password must be greater than 8 characters')),
+    repeatPassword: Joi.valid(Joi.ref('password')).required().error(new Error('Password validation is incorrect'))
+  });
+  const { error } = schema.validate(req.body);
+
+  try {
+    if (error) throw { status: 400, message: error.message };
+
+    const { name, email, password } = req.body;
+    const user = await registerUser(name, email, password, UserRole.CUSTOMER, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'User registered successfully',
+      dataCount: [user].length,
+      data: { user: user }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleUserSupplierRegistration = async (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    name: Joi.string().min(4).max(40).required().error(new Error('Name must be greater than 4 characters')),
+    email: Joi.string().email({ allowFullyQualified: true, minDomainSegments: 2, tlds: { allow: ['com'] } }).required().error(new Error('Email is invalid')),
+    password: Joi.string().alphanum().min(8).required().error(new Error('Password must be greater than 8 characters')),
+    repeatPassword: Joi.valid(Joi.ref('password')).required().error(new Error('Password validation is incorrect'))
+  });
+  const { error } = schema.validate(req.body);
+
+  try {
+    if (error) throw { status: 400, message: error.message };
+
+    const { name, email, password } = req.body;
+    const user = await registerUser(name, email, password, UserRole.SUPPLIER, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'User registered successfully',
+      dataCount: [user].length,
+      data: { user: user }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleUserUpdate = async (req: Request, res: Response, next: NextFunction) => {
+  const loggedInUserId: number = (req as any).user.id;
+  const schema = Joi.object({
+    id: Joi.number().integer().required().error(new Error('User ID is invalid')),
+    name: Joi.string().min(4).max(40).required().error(new Error('Name must be greater than 4 characters')),
+    email: Joi.string().email({ allowFullyQualified: true, minDomainSegments: 2, tlds: { allow: ['com'] } }).required().error(new Error('Email is invalid'))
+  });
+  const { error } = schema.validate({
+    id: Number(req.params.id),
+    name: req.body.name,
+    email: req.body.email
+  });
+
+  try {
+    if (error) throw { status: 400, message: error.message };
+
+    const { name, email } = req.body;
+    const user = await updateUser(loggedInUserId, Number(req.params.id), name, email, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'User updated successfully',
+      dataCount: [user].length,
+      data: { user: user }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleUserUpdateProfileImage = async (req: Request, res: Response, next: NextFunction) => {
+  const loggedInUserId: number = (req as any).user.id;
+  const imageFile = req.file;
+
+  try {
+    if (!imageFile) throw { status: 404, message: 'Profile image is not uploaded' };
+
+    const user = await updateUserProfileImage(loggedInUserId, Number(req.params.id), imageFile.filename, next);
+    const status = 201;
+    const response = {
+      success: true,
+      status: status,
+      message: 'User profile image updated successfully',
+      dataCount: [user].length,
+      data: { user: user }
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const handleAllUsersTruncation = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const deletedUsersCount = await truncateAllUsers(next);
+    const status = 200;
+    const response = {
+      success: true,
+      status: status,
+      message: 'All user data deleted successfully',
+      dataCount: deletedUsersCount
+    };
+
+    res.status(status).json(response);
+  } catch (error) {
+    next(error);
+  }
+};

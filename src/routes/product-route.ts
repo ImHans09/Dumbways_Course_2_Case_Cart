@@ -1,17 +1,15 @@
 import { Router } from "express";
-import { createProduct, updateProduct } from "../controllers/product-controller.js";
-import { authenticate } from "../middlerwares/auth-middleware.js";
+import { authenticate } from "../middlerwares/user-authentication.js";
+import { authorizeSupplier } from "../middlerwares/user-supplier-authorization.js";
+import { upload } from "../utils/multer.js";
+import { handleAllProductsSelected, handleProductCreation, handleProductImageUpdate } from "../controllers/product-controller.js";
 
-// Create Router instance
 const router = Router();
 
-// Route to create product
-router.post('/product/add', authenticate, createProduct);
+router.get('/products', authenticate, authorizeSupplier, handleAllProductsSelected);
 
-// Route to update product
-router.put('/product/update/:id', authenticate, updateProduct);
+router.post('/products/add', authenticate, authorizeSupplier, handleProductCreation);
 
-// Route to delete product
+router.put('/products/upload-image/:id', authenticate, authorizeSupplier, upload.single('productImage'), handleProductImageUpdate);
 
-// Set default export for router variable
 export default router;
